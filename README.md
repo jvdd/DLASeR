@@ -41,8 +41,14 @@ The code and the results of our paper: "Deep Learning for Effective and Efficien
 
 ## Code
 
-Cleaned up code comming soon!
+The source code of the DLASeR+ framework can be found in the ```src``` folder.  
 
+In order to use the code the following two steps must be executed:
+1. Make sure you have all the dependencies installed. Execute the following command;
+```bash
+$ pip install -r requirements.txt 
+```
+2. Import and use the code, see for example the Jupyter notebook ```usage_example.ipynb```.
 
 ## Results
 
