@@ -1,5 +1,7 @@
 
 from dataclasses import dataclass
+from keras.callbacks import EarlyStopping, ReduceLROnPlateau
+
 from src.utils import Operator, operator_to_thresh_str, operator_to_opt_str
 
 @dataclass
@@ -26,17 +28,22 @@ class DLFramework:
         self.threshold_goals = {}
         self.setpoint_goals = {}
         self.optimization_goals = {}
+        self.callback = [EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True),
+                         ReduceLROnPlateau(monitor='val_loss', patience=5, factor=0.3, min_lr=0.0001)]
 
 
-    def _get_threshold_name(self, quality, threshold_value):
+    @staticmethod
+    def _get_threshold_name(quality, threshold_value):
         name = quality+'_thresh'+str(threshold_value)
         return name
 
-    def _get_setpoint_name(self, quality, setpoint_value):
+    @staticmethod
+    def _get_setpoint_name(quality, setpoint_value):
         name = quality+'_setpoint'+str(setpoint_value)
         return name
 
-    def _get_optimization_name(self, quality):
+    @staticmethod
+    def _get_optimization_name(quality):
         name = quality+'_opt'
         return name
 

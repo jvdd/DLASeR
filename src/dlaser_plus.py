@@ -1,5 +1,4 @@
 import numpy as np
-from keras.callbacks import EarlyStopping, ReduceLROnPlateau
 
 from src.dl_framework import DLFramework
 from src.utils import build_core_model, add_classification_head, add_regression_head, operator_to_math, \
@@ -8,64 +7,63 @@ from src.utils import build_core_model, add_classification_head, add_regression_
 
 class DLASeRPlus(DLFramework):
 
-    def __init__(self, qualities, input_size, core_layers):
-        ''' Creates the DLASeR+ framework.
+    def __init__(self, qualities, input_size, scaler, core_layers):
+        """ Creates the DLASeR+ framework.
 
         :param qualities: the qualities for which goals are defined.
         :param input_size: the length of the feature vector.
+        :param scaler: the scaler accompanying the deep learning model.
         :param core_layers: array specifying the width of the core layers.
-        '''
+        """
         super().__init__(qualities)
+        self.scaler = scaler
         self.model = build_core_model(input_size, core_layers)
-        self.callback = [EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True),
-                         ReduceLROnPlateau(monitor='val_loss', patience=5, factor=0.3, min_lr=0.0001)]
 
     def add_threshold_goal(self, quality, operator, threshold_value, class_layers):
-        ''' Add a threshold goal to the DLASeR+ framework.
+        """ Add a threshold goal to the DLASeR+ framework.
 
         :param quality: the quality for which the threshold goal is defined.
         :param operator: the operator of the threshold goal (below = Min, above = Max).
         :param threshold_value: the threshold value of the threshold goal.
         :param class_layers: array specifying the width of the layers in the classification head.
-        '''
+        """
         super().add_threshold_goal(quality, operator, threshold_value)
         name = self._get_threshold_name(quality, threshold_value)
         self.model = add_classification_head(self.model, name, class_layers)
 
     def add_setpoint_goal(self, quality, setpoint_value, epsilon, class_layers):
-        ''' Add a set-point goal to the DLASeR+ framework.
+        """ Add a set-point goal to the DLASeR+ framework.
 
         :param quality: the quality for which the set-point goal is defined.
         :param setpoint_value: the set-point value of the set-point goal.
         :param epsilon: the error (or margin) that defines the set-point goal.
         :param class_layers: array specifying the width of the layers in the classification head.
-        '''
+        """
         super().add_setpoint_goal(quality, setpoint_value, epsilon)
         name = self._get_setpoint_name(quality, setpoint_value)
         self.model = add_classification_head(self.model, name, class_layers)
 
     def add_optimization_goal(self, quality, operator, regr_layers):
-        ''' Add an optimization goal to the DLASeR+ framework.
+        """ Add an optimization goal to the DLASeR+ framework.
 
         :param quality: the quality for which the optimization goal is defined.
         :param operator: the operator of the optimization goal (minimization = Min, maximization = Max).
         :param regr_layers: array specifying the width of the layers in the regression head.
-        :return:
-        '''
+        """
         super().add_optimization_goal(quality, operator)
         name = self._get_optimization_name(quality)
         self.model = add_regression_head(self.model, name, regr_layers)
 
     def _y_dict_to_output(self, y_dict):
-        ''' Generates a mapping of given dictionary (quality, values) to another dictionary (output_layer_name, values).
+        """ Generates a mapping of given dictionary (quality, values) to another dictionary (output_layer_name, values).
         This mapping also processes the values of the accompanying quality for the goal(s) on that quality.
 
         :param y_dict: dictionary with as key the quality and as value the quality its values.
         :return: dictionary with as key the output layer name and as value the processed values of the
                     accompanying quality according to the goal of the output layer.
-        '''
+        """
         for quality in y_dict.keys():
-            assert (quality in self.qualities)  # Make sure the quality is known
+            assert quality in self.qualities  # Make sure the quality is known
         outputs = {}
         # Threshold goals
         for name, threshold_goal in self.threshold_goals.items():
@@ -91,7 +89,7 @@ class DLASeRPlus(DLFramework):
 
     # The online train method
     def train(self, x, y_dict, batch_size, epochs, verbose=True):
-        ''' The train method that is used in the online (training) cycles.
+        """ The train method that is used in the online (training) cycles.
 
         :param x: np.array of train feature vectors.
         :param y_dict: dictionary with as key the quality and as value the quality its values for the training data.
@@ -99,8 +97,9 @@ class DLASeRPlus(DLFramework):
         :param epochs: the number of epochs.
         :param verbose: boolean indicating whether training info should be printed.
         :return: the History object that recorded the training process.
-        '''
-        return self.model.fit({'main_input': x},
+        """
+        # self.scaler.partial_fit(x)
+        return self.model.fit({'main_input': self.scaler.transform(x)},
                               self._y_dict_to_output(y_dict),
                               batch_size=batch_size, epochs=epochs,
                               callbacks=self.callback,
@@ -109,7 +108,7 @@ class DLASeRPlus(DLFramework):
 
     # The fit method
     def fit(self, x_train, x_val, y_dict_train, y_dict_val, batch_size, epochs, verbose=True):
-        ''' A regular fit method that utilizes validation data.
+        """ A regular fit method that utilizes validation data.
 
         :param x_train: np.array of training feature vectors.
         :param x_val: np.array of validation feature vectors.
@@ -119,17 +118,18 @@ class DLASeRPlus(DLFramework):
         :param epochs: the number of epochs.
         :param verbose: boolean indicating whether training info should be printed.
         :return: the History object that recorded the training process.
-        '''
-        return self.model.fit({'main_input': x_train}, self._y_dict_to_output(y_dict_train),
+        """
+        self.scaler.fit(x_train)
+        return self.model.fit({'main_input': self.scaler.transform(x_train)}, self._y_dict_to_output(y_dict_train),
                               batch_size=batch_size, epochs=epochs,
-                              validation_data=[{'main_input': x_val}, self._y_dict_to_output(y_dict_val)],
+                              validation_data=[{'main_input': self.scaler.transform(x_val)}, self._y_dict_to_output(y_dict_val)],
                               callbacks=self.callback,
                               verbose=verbose)
 
     # The offline fit method (used for the grid search)
     # The callback is a specific talos callback
     def fit_gridsearch(self, x_train, x_val, y_dict_train, y_dict_val, batch_size, epochs, callback, verbose=True):
-        ''' Fit method that is used in the grid search.
+        """ Fit method that is used in the grid search.
 
         :param x_train: np.array of training feature vectors.
         :param x_val: np.array of validation feature vectors.
@@ -140,22 +140,22 @@ class DLASeRPlus(DLFramework):
         :param callback: the talos specific callback.
         :param verbose: boolean indicating whether training info should be printed.
         :return: the History object that recorded the training process.
-        '''
-        return self.model.fit({'main_input': x_train}, self._y_dict_to_output(y_dict_train),
+        """
+        return self.model.fit({'main_input': self.scaler.transform(x_train)}, self._y_dict_to_output(y_dict_train),
                               batch_size=batch_size, epochs=epochs,
-                              validation_data=[{'main_input': x_val}, self._y_dict_to_output(y_dict_val)],
+                              validation_data=[{'main_input': self.scaler.transform(x_val)}, self._y_dict_to_output(y_dict_val)],
                               callbacks=[callback],
                               verbose=verbose)
 
-    # Necessary to compile dlaser before training or fitting
+    # Necessary to compile DLASeR+ before training or fitting
     def compile(self, optimizer, lr, extensive_metrics=False):
-        ''' Compiles the deep learning model.
+        """ Compiles the deep learning model.
 
         :param optimizer: the optimizer that the deep learning model should use.
         :param lr: the learning rate of the optimizer.
         :param extensive_metrics: boolean indicating whether additional metrics should be added
-                (i.e., accuracy, f1-score, precision and recall)
-        '''
+                (i.e., accuracy, f1-score, precision and recall). Default = False.
+        """
         outputs_names = []
         if self.model.layers[-1].name.startswith(
                 'output_'):  # In the case that the model contains already some classification / regression heads
@@ -170,14 +170,14 @@ class DLASeRPlus(DLFramework):
                            loss_weights=equal_regr_and_class_weights(outputs_names))
 
     def predict(self, x):
-        ''' Predicts for the given feature vectors.
+        """ Predicts for the given feature vectors.
 
         :param x: np.array containing feature vectors.
         :return: a tuple;
                     -> raw predictions of the deep learning model (the classification and regression heads)
                     -> the names of the associated layer (contains info on the goal and quality)
-        '''
-        pred = self.model.predict(x, use_multiprocessing=True)
+        """
+        pred = self.model.predict(self.scaler.transform(x), use_multiprocessing=True)
         names = []
         idx = -1
         while self.model.layers[idx].name.startswith('output_'):
@@ -186,27 +186,28 @@ class DLASeRPlus(DLFramework):
         return pred, names[::-1]  # Apparently keras predicts in the reverse order
 
     def save_model(self, filename):
-        ''' Save the model at the given filename.
+        """ Save the model at the given filename.
 
         :param filename: the filename where the model should be stored at.
-        '''
+        """
         self.model.save(filename + '.h5')
 
     def load_model(self, filename):
-        ''' Load the deep learning model from the given filename.
+        """ Load the deep learning model from the given filename.
 
         :param filename: the filename where the model is stored.
-        '''
+        """
         self.model.load_weights(filename + '.h5')
 
     def get_model(self):
-        ''' Gets the deep learning model.
+        """ Gets the deep learning model.
 
         :return: the keras deep learning model.
-        '''
+        """
         return self.model
 
     def print_model(self):
-        ''' Prints a structured overview of the deep learning model.
-        '''
+        """ Prints a structured overview of the deep learning model.
+        """
+        print('Scaler: ' + self.scaler.__class__.__name__)
         self.model.summary()

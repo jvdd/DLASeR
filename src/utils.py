@@ -58,18 +58,35 @@ def f1_m(y_true, y_pred):
 def create_simple_ANN_model(input_size, layers, output_activation, output_dim=1):
     inp = Input(shape=(input_size,), dtype='float32')
     x = Dense(layers[0], activation='relu', kernel_regularizer=l1(0.0005))(inp)
-    # x = Dropout(0.1)(x)
+    x = Dropout(0.1)(x)
     for layer in layers[1:]:
-        x = BatchNormalization()(x)
         x = Dense(layer, activation='relu', kernel_regularizer=l2(0.0005))(x)
-    x = BatchNormalization()(x)
-    x = Dense(layers[-1], activation='relu', kernel_regularizer=l2(0.0005))(x)
-    outp = Dense(output_dim, activation=output_activation)(x)
+    outp = Dense(output_dim, activation=output_activation, kernel_regularizer=l2(0.0005))(x)
 
     model = Model(inputs=[inp], outputs=[outp])
 
     return model
 
+def model_name_to_loss(model_name):
+    # model_name is the name of the model
+    if '_thresh' in model_name: # Threshold model
+        return CLASSIFICATION_LOSS
+    elif '_opt' in model_name: # Optimization model
+        return REGRESSION_LOSS
+    else:
+        raise ValueError('Illegal model name given: ' + model_name)
+
+def model_name_to_metrics(model_name, extensive):
+    # model_name is the name of the model
+    if '_thresh' in model_name: # Threshold model
+        if extensive:
+            return CLASSIFICATION_METRICS_EXTENSIVE
+        else:
+            return CLASSIFICATION_METRICS
+    elif '_opt' in model_name:  # Optimization model
+        return REGRESSION_METRICS
+    else:
+        raise ValueError('Illegal model name given: ' + model_name)
 
 ### DLASeR+ utils
 
